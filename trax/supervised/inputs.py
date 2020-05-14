@@ -30,6 +30,9 @@ from absl import logging
 import gin
 import numpy as np
 
+from t5.data import preprocessors as t5_processors
+from t5.data import sentencepiece_vocabulary as t5_spc_vocab
+from t5.data import utils as t5_utils
 from tensor2tensor import problems_colab as t2t_problems
 import tensorflow as tf   # pylint: disable=g-explicit-tensorflow-version-import
 import tensorflow_datasets as tfds
@@ -575,6 +578,7 @@ def batch_fn(dataset, training, n_devices, variable_target_shapes,
     dataset = bucket_by_length(
         dataset, example_length, boundaries, batch_sizes)
   else:
+    logging.info('Not Bucketing cur_batch_size %d.', cur_batch_size)
     dataset = batch_data(dataset, cur_batch_size)
   if training and batch_shuffle_size is not None:
     dataset = shuffle_data(dataset, batch_shuffle_size)
@@ -810,14 +814,21 @@ def bair_robot_pushing_preprocess(dataset, training, shapes):
   return dataset, (new_shapes, new_shape)
 
 
-@gin.configurable(whitelist=['preprocess_fun', 'shuffle_buffer_size'])
+@gin.configurable(
+    whitelist=['bare_preprocess_fun', 'preprocess_fun', 'shuffle_buffer_size'])
 def shuffle_and_batch_data(dataset,
                            target_names,
                            features_info,
                            training,
                            shuffle_buffer_size=1024,
+                           bare_preprocess_fun=None,
                            preprocess_fun=no_preprocess):
   """Shuffle and batch the given dataset."""
+  shapes = None
+  # `bare_preprocess_fun` is called before appending targets etc.
+  if bare_preprocess_fun is not None:
+    dataset, shapes = bare_preprocess_fun(dataset)
+
   def append_targets(example):
     """Append targets to the example dictionary. Needed for Keras."""
     if len(target_names) == 1:
@@ -837,7 +848,7 @@ def shuffle_and_batch_data(dataset,
     # essential for synchronous highly-parallel training to avoid multiple
     # replicas reading the same data in lock-step.
     dataset = dataset.skip(random.randint(0, _MAX_SKIP_EXAMPLES))
-  shapes = {k: features_info[k].shape for k in features_info}
+  shapes = shapes or {k: features_info[k].shape for k in features_info}
   shapes = (shapes, shapes[target_names[0]])
   dataset, shapes = preprocess_fun(dataset, training, shapes)
   dataset = dataset.shuffle(shuffle_buffer_size)
@@ -866,7 +877,37 @@ def _train_and_eval_batches(dataset, data_dir, input_name, target_name):
           input_name, variable_target_shapes)
 
 
-DEFAULT_SPM_PATH = 'gs://t5-data/vocabs/cc_all.32000/sentencepiece.model'  # GCS
+@gin.configurable(blacklist=['dataset'])
+def c4_bare_preprocess_fun(dataset,
+                           spm_path=None,
+                           copy_plaintext=True,
+                           sequence_length=None):
+  """Returns a dataset that contains 'inputs' and 'targets' from C4."""
+  # Set target key to be equal to the text content.
+  dataset = t5_processors.rekey(
+      dataset, key_map={'targets': 'text', 'inputs': None})
+
+  # Vocabulary for tokenization.
+  vocab = t5_spc_vocab.SentencePieceVocabulary(
+      sentencepiece_model_file=spm_path or t5_utils.DEFAULT_SPM_PATH)
+  feature = t5_utils.Feature(vocab)
+  output_features = {'targets': feature, 'inputs': feature}
+
+  # Tokenize the targets.
+  dataset = t5_utils.encode_string_features(
+      dataset, output_features, keys=output_features,
+      copy_plaintext=copy_plaintext)
+
+  # Preprocess the tokens - the exact preprocessors are set via
+  dataset = t5_processors.unsupervised(dataset,
+                                       sequence_length=sequence_length,
+                                       output_features=output_features)
+
+  shapes = {'inputs': (None,), 'targets': (None,)}
+
+  # This dataset will have inputs and targets, corresponding to whatever
+  # preprocessing is configured in the gin configuration.
+  return dataset, shapes
 
 
 @gin.configurable(blacklist=['dataset', 'training', 'shapes'])
@@ -889,7 +930,7 @@ def c4_preprocess(dataset, training, shapes, max_target_length=-1,
     return features, features['targets']
 
   if tokenization == 'spc':
-    spm_path = DEFAULT_SPM_PATH if spm_path is None else spm_path
+    spm_path = spm_path or t5_utils.DEFAULT_SPM_PATH
     with tf.compat.v1.gfile.GFile(spm_path, 'rb') as f:
       spc_model = f.read()
     tokenizer = tf_text.SentencepieceTokenizer(model=spc_model)
