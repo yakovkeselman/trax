@@ -2511,7 +2511,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
         for ddof in [0, 1, 2]
         for keepdims in [False, True]
         for rng_factory in [jtu.rand_default]))
-  @disable
   def testVar(self, shape, dtype, out_dtype, axis, ddof, keepdims, rng_factory):
     rng = rng_factory()
     args_maker = self._GetArgsMaker(rng, [shape], [dtype])
@@ -2525,7 +2524,7 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True,
                             tol=tol)
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True, rtol=tol,
-                          atol=tol)
+                          atol=tol, check_incomplete_shape=True)
 
   @named_parameters(
       jtu.cases_from_list(

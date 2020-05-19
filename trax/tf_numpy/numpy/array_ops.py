@@ -720,8 +720,32 @@ def amin(a, axis=None, keepdims=None):
 
 
 @utils.np_doc(np.var)
-def var(a, axis=None, keepdims=None):
-  return _reduce(tf.math.reduce_variance, a, axis=axis, dtype=None,
+def var(a, axis=None, dtype=None, out=None, ddof=0, keepdims=None):  # pylint: disable=missing-docstring
+  if out is not None:
+    raise ValueError('Setting out is not supported.')
+
+  if ddof != 0:
+    # TF reduce_variance doesn't support ddof, so calculate it using ops.
+    a = asarray(a)
+    a_dtype = np.promote_types(a.dtype, dtype)
+    a = tf.cast(a.data, a_dtype)
+
+    means = tf.math.reduce_mean(a, axis=axis, keepdims=True)
+    squared_deviations = tf.math.reduce_sum(
+        tf.math.square(a - means), axis=axis, keepdims=keepdims)
+
+    if axis is None:
+      n = tf.size(a)
+    else:
+      if axis < 0:
+        axis += tf.rank(a)
+      n = tf.math.reduce_prod(tf.gather(tf.shape(a), axis))
+    n = tf.cast(n - ddof, a.dtype)
+
+    return utils.tensor_to_ndarray(
+        tf.cast(tf.math.divide(squared_deviations, n), dtype))
+
+  return _reduce(tf.math.reduce_variance, a, axis=axis, dtype=dtype,
                  keepdims=keepdims, promote_int=_TO_FLOAT)
 
 
