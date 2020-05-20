@@ -1218,7 +1218,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=True)
     self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
 
-  @disable
   def testIssue1233(self):
     '''
     Following numpy test suite from `test_repeat` at https://github.com/numpy/numpy/blob/master/numpy/core/tests/test_multiarray.py
@@ -1232,7 +1231,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
       self.assertAllClose(lax_ans, numpy_ans, check_dtypes=True, rtol=tol, atol=tol)
 
       lnp_fun = lambda arg: lnp.repeat(arg, repeats = repeats, axis=axis)
-      self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=True)
+      self._CompileAndCheck(
+          lnp_fun, args_maker, check_dtypes=True, check_eval_on_shapes=False)
 
     m = lnp.array([1,2,3,4,5,6])
     args_maker = lambda: [m]
