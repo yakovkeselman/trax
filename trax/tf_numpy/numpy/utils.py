@@ -293,11 +293,15 @@ def get_static_value(x):
 
 
 def _maybe_static(x):
+  return _maybe_static_and_indicator(x)[0]
+
+
+def _maybe_static_and_indicator(x):
   value = get_static_value(x)
   if value is None:
-    return x
+    return x, False
   else:
-    return value
+    return value, True
 
 
 # All the following functions exist becaues get_static_value can't handle

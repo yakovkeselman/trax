@@ -2122,7 +2122,6 @@ class LaxBackedNumpyTests(jtu.TestCase):
       for shape in [0, 5]
       for n in [2, 4]
       for increasing in [False, True]))
-  @disable
   def testVander(self, shape, dtype, n, increasing, rng_factory):
     rng = rng_factory()
     def onp_fun(arg):
@@ -2134,7 +2133,8 @@ class LaxBackedNumpyTests(jtu.TestCase):
     # those semantics, but they seem like a bug.
     self._CheckAgainstNumpy(onp_fun, lnp_fun, args_maker, check_dtypes=False,
                             tol={onp.float32: 1e-3})
-    self._CompileAndCheck(lnp_fun, args_maker, check_dtypes=False)
+    self._CompileAndCheck(
+        lnp_fun, args_maker, check_dtypes=False, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
         {"testcase_name": jtu.format_test_name_suffix("nan_to_num", [shape],
@@ -2172,14 +2172,14 @@ class LaxBackedNumpyTests(jtu.TestCase):
           (((3,), (4,)), (onp.int32, onp.int32)),
           (((3,), (1,), (4,)), (onp.int32, onp.int32, onp.int32)),
         )))
-  @disable
   def testIx_(self, rng_factory, shapes, dtypes):
     rng = rng_factory()
     args_maker = lambda: [rng(shape, dtype)
                           for shape, dtype in zip(shapes, dtypes)]
     self._CheckAgainstNumpy(onp.ix_, lnp.ix_, args_maker,
                             check_dtypes=True)
-    self._CompileAndCheck(lnp.ix_, args_maker, check_dtypes=True)
+    self._CompileAndCheck(
+        lnp.ix_, args_maker, check_dtypes=True, check_incomplete_shape=True)
 
   @named_parameters(jtu.cases_from_list(
         {"testcase_name":

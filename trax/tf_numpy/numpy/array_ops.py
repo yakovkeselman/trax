@@ -1345,3 +1345,51 @@ def triu(m, k=0):  # pylint: disable=missing-docstring
   mask = tri(*m_shape[-2:], k=k - 1, dtype=bool)
   return utils.tensor_to_ndarray(
       tf.where(tf.broadcast_to(mask, tf.shape(m)), z, m))
+
+
+@utils.np_doc(np.vander)
+def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,invalid-name
+  x = asarray(x).data
+
+  x_shape = tf.shape(x)
+  N = N or x_shape[0]
+
+  N, is_static = utils._maybe_static_and_indicator(N)  # pylint: disable=protected-access
+  if is_static:
+    if N < 0:
+      raise ValueError('N must be nonnegative')
+  else:
+    tf.debugging.Assert(N >= 0, [N])
+
+  rank, is_static = utils._maybe_static_and_indicator(tf.rank(x))  # pylint: disable=protected-access
+  if is_static:
+    if rank != 1:
+      raise ValueError('x must be a one-dimensional array')
+  else:
+    tf.debugging.Assert(rank == 1, [rank])
+
+  v = 1 if increasing else -1
+  x = tf.expand_dims(x, -1)
+  return utils.tensor_to_ndarray(
+      tf.math.pow(x, tf.cast(tf.range(N), dtype=x.dtype)[::v]))
+
+
+@utils.np_doc(np.ix_)
+def ix_(*args):  # pylint: disable=missing-docstring
+  n = len(args)
+  output = []
+  for i, a in enumerate(args):
+    a = asarray(a).data
+    a_rank, is_static = utils._maybe_static_and_indicator(tf.rank(a))  # pylint: disable=protected-access
+    if is_static:
+      if a_rank != 1:
+        raise ValueError(
+            'Arguments must be 1-d, got arg {} of rank {}'.format(i, a_rank))
+    else:
+      tf.debugging.Assert(a_rank == 1, [a_rank])
+
+    new_shape = [1] * n
+    new_shape[i] = tf.shape(a)[0]
+    output.append(tf.reshape(a, new_shape))
+
+  return [utils.tensor_to_ndarray(o) for o in output]
